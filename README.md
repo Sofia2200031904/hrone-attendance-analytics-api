@@ -1,46 +1,121 @@
 # Employee Attendance & Analytics API
 
-FastAPI and MongoDB service implementing the HROne assignment contract for employee attendance, manual regularization with an audit trail, analytics, and MongoDB query explanations.
+A REST API built with **Python, FastAPI, and MongoDB** for employee attendance, punch-in/punch-out, manual corrections with an audit trail, analytics, and query explanations. It implements the HROne assignment contract in `openapi.yaml`.
 
-## Requirements
+## Features
+
+- Employee creation and paginated employee and attendance listing.
+- Attendance punch-in and punch-out with state, timestamp, and duplicate-operation validation.
+- Manual attendance corrections with recalculated derived fields and append-only audit history.
+- Monthly employee summaries, department summaries, late-comer leaderboard, and daily department trends, calculated with MongoDB aggregation pipelines.
+- MongoDB index creation and explain plans for the five analytics/list query families.
+- Interactive Swagger documentation and MongoDB-backed automated tests.
+
+Attendance rules include the configured late-arrival grace period, overnight shifts, half days, overtime, and working-day calculations. See `openapi.yaml` and `DECISIONS.md` for the precise contract and decisions.
+
+## Technology
 
 - Python 3.11 or newer
-- MongoDB 6.0 or newer (HROne's grader uses MongoDB 7)
+- FastAPI and Pydantic
+- MongoDB 6.0 or newer with PyMongo
+- Pytest and FastAPI `TestClient`
 
-## Run on Windows PowerShell
+## Project structure
+
+```text
+hrone-attendance-analytics-api/
+├── app/
+│   ├── __init__.py
+│   └── main.py
+├── sample_data/
+│   ├── attendance_logs.json
+│   └── employees.json
+├── tests/
+│   ├── conftest.py
+│   └── test_api.py
+├── .env.example
+├── .gitignore
+├── DATA_MODEL.md
+├── DECISIONS.md
+├── openapi.yaml
+├── README.md
+├── requirements.txt
+├── REVIEW.md
+└── sample_seed.py
+```
+
+The assignment statement and local `.env` file are intentionally excluded from Git.
+
+## Setup and run (Windows PowerShell)
+
+Prerequisites: Python 3.11 or newer and MongoDB 6.0 or newer, running locally or reachable through a MongoDB URI.
 
 ```powershell
-py -3.11 -m venv .venv
+git clone https://github.com/Sofia2200031904/hrone-attendance-analytics-api.git
+cd hrone-attendance-analytics-api
+py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env
-# Edit .env with your own local or Atlas connection settings.
+```
+
+Edit `.env` with the MongoDB settings for your environment:
+
+```env
+MONGO_URI=mongodb://localhost:27017
+MONGO_DB=attendance_db
+```
+
+Environment variables take precedence over `.env`. The API creates its indexes at startup. Start the service with:
+
+```powershell
 uvicorn app.main:app --port 8000
 ```
 
-Set `MONGO_URI` and `MONGO_DB` in the process environment or `.env`; process environment values take precedence. `.env` is ignored by Git. The API creates its indexes at startup. Open Swagger UI at <http://127.0.0.1:8000/docs>.
+Open Swagger UI at <http://127.0.0.1:8000/docs>, ReDoc at <http://127.0.0.1:8000/redoc>, or the OpenAPI JSON at <http://127.0.0.1:8000/openapi.json>. `GET /health` checks API and MongoDB readiness. The API does not provide a homepage at `/`.
 
-To load the supplied sample records, run `python sample_seed.py` only after configuring a disposable database. The seeder replaces documents in both configured collections.
+To load sample records, run `python sample_seed.py` **only after pointing `.env` at a disposable database**. The seeder replaces the contents of both configured collections.
 
-The service exposes `GET /health`; employee create/list; attendance punch-in, punch-out, list, and regularization; employee monthly summary; department summary; late leaderboard; department daily trend; and `GET /admin/explain/{endpoint}`. See `openapi.yaml` for the complete request and response contract, parameters, and status codes.
+## API endpoints
+
+The implementation exposes these 12 method/path operations across 11 API paths:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/health` | API and MongoDB readiness |
+| `POST` | `/employees` | Create an employee |
+| `GET` | `/employees` | List employees with optional department filter and pagination |
+| `POST` | `/attendance/punch-in` | Record a punch-in |
+| `POST` | `/attendance/punch-out` | Record a punch-out |
+| `GET` | `/attendance` | List attendance with filters and pagination |
+| `PATCH` | `/attendance/{emp_code}/{date}` | Correct a record and append audit history |
+| `GET` | `/analytics/employees/{emp_code}/monthly` | Employee monthly summary |
+| `GET` | `/analytics/departments/summary` | Department summary for a month |
+| `GET` | `/analytics/leaderboard/late` | Late-comers leaderboard for a month |
+| `GET` | `/analytics/departments/{department}/trend` | Daily department attendance trend |
+| `GET` | `/admin/explain/{endpoint}` | Explain a supported query or aggregation |
+
+See `openapi.yaml` for exact request/response schemas, parameters, validation rules, status codes, and business rules.
 
 ## Tests
 
-The pytest suite uses a fresh database named `hrone_test_<random-id>` for each test and drops only that generated database afterward. It refuses to target a configured application database. Start MongoDB, then run:
+Tests use a fresh randomly named `hrone_test_<id>` database for each test and drop only that generated database afterward. They refuse to target a configured application database. Start MongoDB, then run:
 
 ```powershell
 python -m pytest -q
 ```
 
-Set `TEST_MONGO_URI` to point the tests at another MongoDB instance. Verified locally on MongoDB 8.2.3: all 13 integration tests pass, including the five explain plans and live request checks. The test data includes the supplied sample and focused edge cases. The assignment grader uses MongoDB 7; that exact server version was not available for local verification.
+Set `TEST_MONGO_URI` to use a separate MongoDB test server. The current suite has 13 MongoDB-backed integration tests. The suite passed locally on MongoDB 8.2.3; MongoDB 7 was not available for direct local verification.
 
-## Project files
+## Design and review documents
 
-- `app/main.py` — all API, validation, database, and aggregation code
-- `tests/` — MongoDB-backed endpoint and business-rule integration tests
-- `openapi.yaml` — authoritative HTTP and business-rule contract
-- `DATA_MODEL.md` — MongoDB collections and stored document shapes
-- `REVIEW.md`, `DECISIONS.md` — starter review and design rationale
-- `sample_data/`, `sample_seed.py` — sample fixtures and loader
+- `openapi.yaml` — authoritative API contract and business rules.
+- `DATA_MODEL.md` — MongoDB collections, fields, and sample data shape.
+- `DECISIONS.md` — implementation decisions and rationale.
+- `REVIEW.md` — review findings and verification notes.
 
-No credentials, `.env`, or Dockerfile belong in the submission. Keep the assignment statement out of the public repository; `.gitignore` excludes it.
+## Security and submission
+
+Never commit `.env`, credentials, or private records. `.gitignore` excludes `.env` variants (except the safe `.env.example`) and the assignment statement. No deployment URL is required by the assignment.
+
+**Public repository:** <https://github.com/Sofia2200031904/hrone-attendance-analytics-api>
